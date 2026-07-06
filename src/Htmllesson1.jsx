@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, createContext, useContext } from 'react';
-import mentorImg from '../assets/common/mentor.png';
+import mentorImg from './assets/common/mentor.png';
 
 // ============================================================
 //  KOD COMPILATOR (HtmlCompiler) — ILGARI ./HtmlCompiler.jsx EDI,

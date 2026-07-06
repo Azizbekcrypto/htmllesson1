@@ -3591,6 +3591,7 @@ export default function HtmlLesson({ lang: langProp, onFinished, onPractice }) {
   const [screen, setScreen] = useState(0);
   const [answers, setAnswers] = useState({});
   const [practice, setPractice] = useState(null);   // lokal overlay: { task, starter, done } yoki null
+  const [mentorPractice, setMentorPractice] = useState(null); // jonli darsda mentor praktika paneli: { task, starter, fromScreen }
   const startTimeRef = useRef(Date.now());
 
   // ETALON — 1920px (InternetLesson): keng oynada proportsional kattalashadi, <=1920 da z=1
@@ -3600,8 +3601,13 @@ export default function HtmlLesson({ lang: langProp, onFinished, onPractice }) {
   }, []);
   const advance = () => setScreen(s => Math.min(s + 1, TOTAL_SCREENS - 1));
   // Praktikani ishga tushiradi: production'da onPractice (LMS), lokalda overlay.
-  const runPractice = (entry) => {
-    const done = () => { setPractice(null); advance(); };
+  // fromScreen — praktika QAYSI ekrandan keyin ochilgani; tugatilganda mentor paneli
+  // uchun «tugatdim» signali serverga yoziladi (o'quvchi jonli darsda bo'lsa).
+  const runPractice = (entry, fromScreen) => {
+    const done = () => {
+      if (live && live.mode === 'student') live.submitAnswer(PRACTICE_DONE_BASE + fromScreen, `practice-${fromScreen}`, 0, true, 0);
+      setPractice(null); advance();
+    };
     if (typeof onPractice === 'function') {
       Promise.resolve(onPractice(entry.task)).then(done); // production: LMS compilatori
     } else {
@@ -3612,10 +3618,16 @@ export default function HtmlLesson({ lang: langProp, onFinished, onPractice }) {
   // bajarilgach keyingi ekranga o'tadi. Aks holda oddiy o'tadi.
   const next = () => {
     const entry = PRACTICE_AFTER[screen];
-    // Jonli mentor (proyektor) praktika overlay'ini ochmaydi — u sinfni boshqaradi,
-    // o'quvchilar praktikani o'z qurilmasida (yoki self rejimda) bajaradi.
-    if (entry && !(live && live.mode === 'mentor')) runPractice(entry);
-    else advance();
+    if (!entry) { advance(); return; }
+    if (live && live.mode === 'mentor') {
+      // Jonli mentor: avval o'quvchilarni OCHAMIZ (advance → ular praktikani o'z
+      // qurilmasida yozadi), so'ng mentor panelida kim tugatganini kuzatadi va
+      // «Doskada yozib ko'rsatish» bilan aynan shu mashqni proyektorda yechib beradi.
+      setMentorPractice({ ...entry, fromScreen: screen });
+      advance();
+    } else {
+      runPractice(entry, screen); // o'quvchi / self: mashqni o'zi bajaradi
+    }
   };
   const prev = () => setScreen(s => Math.max(s - 1, 0));
   const recordAnswer = (idx, data) => {
@@ -3623,7 +3635,7 @@ export default function HtmlLesson({ lang: langProp, onFinished, onPractice }) {
     const _m = SCREEN_META[idx];
     if (_m && _m.scored && _m.scope === 'final' && data && data.correct && live.mode === 'student') live.submitAnswer(idx, _m.id, 0, true, 0);
   };
-  const reset = () => { setAnswers({}); setScreen(0); setPractice(null); startTimeRef.current = Date.now(); };
+  const reset = () => { setAnswers({}); setScreen(0); setPractice(null); setMentorPractice(null); startTimeRef.current = Date.now(); };
 
   // Javob kaliti: inline testlar + jang savollari (QUIZ_BANK'dan) — mentor ochganda serverga yuklanadi
   const answerKey = { ...INLINE_KEYS, ...Object.fromEntries(QUIZ_BANK.map((q, i) => [`quiz-${i}`, q.correct])) };
@@ -4273,6 +4285,22 @@ export default function HtmlLesson({ lang: langProp, onFinished, onPractice }) {
         .mstats-warn { margin: 0; font-family: 'Manrope'; font-weight: 600; font-size: 13px; color: ${T.accent}; background: ${T.accentSoft}; border-radius: 10px; padding: 9px 12px; }
         .mstats-wait { margin: 0; font-size: 12.5px; color: ${T.ink3}; font-style: italic; }
         @media (max-width: 560px) { .mstats-count { min-width: 78px; font-size: 11px; } }
+        /* Mentor praktika paneli (jonli) */
+        .mp-overlay { position: fixed; inset: 0; z-index: 2000; background: ${T.bg}; display: flex; align-items: center; justify-content: center; padding: clamp(16px,3vw,34px); overflow: auto; }
+        .mp-card { width: 100%; max-width: 640px; background: ${T.paper}; border-radius: 22px; padding: clamp(22px,3.4vw,36px); box-shadow: 0 24px 60px -24px rgba(${T.shadowBase},0.4); display: flex; flex-direction: column; gap: 14px; animation: zoom-pop 0.3s cubic-bezier(.34,1.3,.4,1); }
+        .mp-eyebrow { font-size: 12px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: ${T.accent}; }
+        .mp-title { font-family: 'Source Serif 4', Georgia, serif; font-weight: 600; font-size: clamp(22px,3.2vw,30px); color: ${T.ink}; margin: 0; line-height: 1.15; }
+        .mp-brief { margin: 0; font-size: clamp(13.5px,1.8vw,15px); line-height: 1.55; color: ${T.ink2}; }
+        .mp-flow { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 2px 0 4px; }
+        .mp-step { font-family: 'Manrope'; font-weight: 700; font-size: 12.5px; color: ${T.ink2}; background: rgba(${T.shadowBase},0.06); border-radius: 99px; padding: 6px 13px; }
+        .mp-step.cur { color: ${T.success}; background: ${T.successSoft}; }
+        .mp-arr { color: ${T.ink3}; font-weight: 700; }
+        .mp-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+        .mp-demo { flex: 1; min-width: 200px; padding: 14px 20px; border: none; border-radius: 14px; background: ${T.ink}; color: ${T.paper}; font-family: 'Manrope'; font-weight: 800; font-size: 15px; cursor: pointer; box-shadow: 0 10px 26px -10px rgba(${T.shadowBase},0.4); transition: transform 0.15s; }
+        .mp-demo:hover { transform: translateY(-2px); }
+        .mp-next { flex: 1; min-width: 160px; padding: 14px 20px; border: 1.5px solid rgba(${T.shadowBase},0.16); border-radius: 14px; background: ${T.paper}; color: ${T.ink}; font-family: 'Manrope'; font-weight: 800; font-size: 15px; cursor: pointer; transition: all 0.15s; }
+        .mp-next:hover { border-color: ${T.accent}; color: ${T.accent}; }
+        .mp-tip { margin: 2px 0 0; font-size: 12.5px; line-height: 1.5; color: ${T.ink3}; }
         /* Verdikt + recap tugmalari */
         .mstats-verdict { border-radius: 12px; padding: 12px 15px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; animation: fade-step 0.3s ease-out; }
         .mstats-verdict.need { background: ${T.accentSoft}; border-left: 4px solid ${T.accent}; }
@@ -4492,6 +4520,10 @@ export default function HtmlLesson({ lang: langProp, onFinished, onPractice }) {
             onBack={() => setPractice(null)}
           />
         </div>
+      )}
+      {/* Jonli darsda mentor praktika paneli — o'quvchilar yozadi, keyin mentor doskada ko'rsatadi */}
+      {mentorPractice && (
+        <MentorPracticeOverlay entry={mentorPractice} live={live} onClose={() => setMentorPractice(null)} />
       )}
     </LangContext.Provider>
   );
